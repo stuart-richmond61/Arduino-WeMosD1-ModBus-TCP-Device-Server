@@ -5,6 +5,7 @@ Provides wifi TCP server on port 502 (modbus) for BMP280 (x2),  HTU21 (x2), TSL2
 ModBus Register usage
 
 Floating point (2 register values) device readings
+
     40001  R(0) R(1)  BMP/E #1 Temperature
     40003  R(2) R(3)  BMP/E #1 Pressure
     40005  R(4) R(5)  BME #1 Humidity (if build using BME280)
@@ -30,6 +31,7 @@ Floating point (2 register values) device readings
     40055  R(54) R(55)  TSL ir reading
 
 Integer status values
+
     40061  R(60) Major version #
     40062  R(61) Minor version #
     40063  R(62) RSSI
@@ -40,6 +42,7 @@ Integer status values
     40068 R(67) Client connection count
 
 Integer device readings
+
     40101  R(100)  BMP/E #1 Temperature
     40102  R(101)  BMP/E #1 Pressure
     40103  R(102)  BME #1 Humidity (if build using BME280)
