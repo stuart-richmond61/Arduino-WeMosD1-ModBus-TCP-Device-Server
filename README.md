@@ -1,17 +1,24 @@
 # Arduino-WeMosD1-ModBus-TCP-Device-Server
-Provides wifi TCP server on port 502 (modbus) for BMP280 (x2),  HTU21 (x2), TSL2561 (x1), DS18B20 (x8)
+Provides ModBus/TCP server on port 502 (modbus) via WIFI.  
+Supports
+	BMP280 (Up to 2)
+	HTU21 (Up to 2)
+	TSL2561 (1)
+	DS18B20 (Up to 8)
+	TTL input state change counter (1)
 
+------------------------------------------------------
 Arduino IDE setup used for my Wemos D1 Mini: 
 Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already completed)
 
-  Board: "LOLIN(WEMOS) D1 R2 & mini"
-  Upload Speed: "921600"
-  CPU Frequency: "80 MHz"
-  Flash Size: "4MB (FS:2MB OTA:~1019KB"
-  Debug port: "Disabled"
-  Debug Level: "None"
-  IwIP Variant: "v2 Lower Memory"
-  VTables: "Flash"
+	Board: "LOLIN(WEMOS) D1 R2 & mini"
+	Upload Speed: "921600"
+	CPU Frequency: "80 MHz"
+	Flash Size: "4MB (FS:2MB OTA:~1019KB"
+	Debug port: "Disabled"
+	Debug Level: "None"
+	IwIP Variant: "v2 Lower Memory"
+	VTables: "Flash"
   
 ------------------------------------------------------
 ModBus Register usage
