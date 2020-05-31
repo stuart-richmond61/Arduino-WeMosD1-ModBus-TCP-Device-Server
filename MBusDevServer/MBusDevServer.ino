@@ -7,8 +7,8 @@
   MbusDevServer for WeMosD1
   Created by Stuart Richmond   01-15-2020
 
-  Uses WiFi Modbus TCP Server for multiple devices, using Adafruit libraries in most cases.  Build is conditional dependant on 
-  defines.  
+  Uses WiFi Modbus TCP Server for multiple devices, using Adafruit libraries in most cases.  Device inclusion is set
+  using defines below.
 
 #define USE_DS18B20   - build with support for 1 or more DS18B20s on OneWire bus
 #define USE_BMP280_1  - build with support for BMP280 at alternate address I2C
@@ -28,14 +28,20 @@
 #include <Modified_TSL2561.h>
 #include <DS18B20.h>
 
-  Change log:
-    02-01-2020  Modifie to update DS18 device one per loop iteration
+Pin Usage:
+D4     - OneWire bus for DS18B20s if included
+D0     - input from motion sensor if connected
 
+  Change log:
+    02-01-2020  Modified to update DS18 device one per loop iteration
+    05-27-2020  Working on RCWL-0516 radar motion detector
   
 */
-#define SRVR_DATE "02-15-2020  Author: Stu Richmond"
+#define MOTION_PIN D0
+
+#define SRVR_DATE "05-27-2020  Author: Stu Richmond"
 #define SRVR_MAJOR 1
-#define SRVR_MINOR 6
+#define SRVR_MINOR 7
 //
 //Caution: Keep UPDATERATEDS18 > UPDATERATEMS
 //
@@ -79,7 +85,7 @@
 #define DS18_FP_BASE 30
 //    40031  R(30) R(31) DS18B20 #0
 //    40033  R(32) R(33) DS18B20 #1
-//    40035  R(34) R(35) DS18B20 #2FI
+//    40035  R(34) R(35) DS18B20 #2
 //    40037  R(36) R(37) DS18B20 #3
 //    40039  R(38) R(39) DS18B20 #4
 //    40041  R(40) R(41) DS18B20 #5
@@ -110,6 +116,10 @@
 //    40067  R(66) TSL 2561 Count
 #define SRVR_CLIENT_CNT_BASE 67
 //    40068 R(67) Client connection count
+#define MOTION_PIN_BASE 68
+//    40069 R(68) Motion detector Pin
+#define MOTION_CNT_BASE 69
+//    40070 R(69) Motion detector counter
 //
 // Integer 16 values
 #define BMP1_I16_TEMP_BASE 100
@@ -138,6 +148,7 @@
 //    40116  R(115) TSL broadband reading
 #define TSL_I16_IR_BASE 44
 //    40117  R(116) TSL ir reading
+
 
 #define DS18_I16_BASE 120
 //    40121  R(120) DS18B20 #0
@@ -262,6 +273,11 @@ int status = WL_IDLE_STATUS;
 WiFiServer wifiServer(502);
 
 ModbusTCPServer modbusTCPServer;
+//
+//=========== Serial to RS485 ============================
+// removed, unable to get to work on D1 mini
+//#include <SoftwareSerial.h>
+//SoftwareSerial  SSerial(D6,D7);  // RX, TX
 
 //===============================================================
 #ifdef DEBUG
@@ -304,6 +320,8 @@ int WireScan()
 
 
 //===============================================================
+float LastMotion;
+float MotionCount;
 
 void setup() {
   //Initialize serial and wait for port to open:
@@ -313,6 +331,10 @@ void setup() {
   }
 printf(Serial,"-- Init beginning --\n\r");
 printf(Serial,"MBusDevServer v%d.%d  %s\n\r",SRVR_MAJOR,SRVR_MINOR,SRVR_DATE);
+
+pinMode(MOTION_PIN, INPUT);
+LastMotion = 0;
+MotionCount = 0;
 
 #ifdef DEBUGI2C  
   WireScan();
@@ -448,6 +470,9 @@ printf(Serial,"MBusDevServer v%d.%d  %s\n\r",SRVR_MAJOR,SRVR_MINOR,SRVR_DATE);
               UpdateModbusInt16Register(DS18_I16_BASE+i,curvalue);
         }
 
+// removed unable to get to work on D1 mini
+//SSerial.begin(9600);
+       
 printf(Serial,"-- Init complete --\n\r");
 }
 //
@@ -512,15 +537,28 @@ void UpdateModbusInt16Register(uint8_t BaseRegister, float val)
 // Reads each device configured/available, and stores result into associated
 // modbus register (floating and integer)
 //
+
 void UpdateModbusRegisters()
 {
   float curvalue;
   char fstr[11];  
-
+  float CurMotion;
+  
 //printf(Serial,"UpdateModbusRegisters entered...\n\r");
   int rssi = WiFi.RSSI();
 //  printf(Serial," rssi:%ld   base:%d\n\r",rssi,WIFI_RSSI_BASE);
   modbusTCPServer.inputRegisterWrite(WIFI_RSSI_BASE, rssi);      
+//
+  CurMotion = digitalRead(MOTION_PIN);
+  modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASE,CurMotion);      
+  if (CurMotion != LastMotion) { // change detected
+    if (CurMotion==1) {
+      MotionCount++;
+      modbusTCPServer.inputRegisterWrite(MOTION_CNT_BASE,MotionCount);      
+    }
+    LastMotion = CurMotion;
+  }
+
 // -----  Update register entries for HTU21 #1                
 #ifdef USE_HTU21_1    
   if (HTU1State==true) {
@@ -667,6 +705,19 @@ void UpdateModbusRegisters()
   
 }
 //
+//===========================================================================
+//
+int ByteCount=0;
+void PrintByte(unsigned char c)
+{
+  printf(Serial,"%X ",c);
+  ByteCount++;
+  if (ByteCount>10) {
+    printf(Serial,"\n\r");
+    ByteCount = 0;
+  }
+}
+//
 //============================================================================
 //
 // main loop
@@ -709,6 +760,8 @@ void loop() {
 //      printf(Serial,"Calling modbusTCPServer.poll\n\r");
       // poll for Modbus TCP requests, while client connected
       modbusTCPServer.poll();
+// removed, could not get to work on D1 mini
+//while (SSerial.available()) PrintByte(SSerial.read());
     }
     printf(Serial,"Client disconnected...\n\r");
   }
