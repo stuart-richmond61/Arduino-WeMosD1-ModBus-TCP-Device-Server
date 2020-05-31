@@ -8,8 +8,7 @@ Supports
 	TTL input state change counter (1)
 
 ------------------------------------------------------
-Arduino IDE setup used for my Wemos D1 Mini: 
-Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already completed)
+Arduino IDE setup used for my Wemos D1 Mini 
 
 	Board: "LOLIN(WEMOS) D1 R2 & mini"
 	Upload Speed: "921600"
@@ -19,6 +18,8 @@ Note: First use Board manager to install support for ESP8266 boards for Wemos D1
 	Debug Level: "None"
 	IwIP Variant: "v2 Lower Memory"
 	VTables: "Flash"
+
+Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already completed)
   
 ------------------------------------------------------
 ModBus Register usage
