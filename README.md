@@ -1,5 +1,6 @@
 # Arduino-WeMosD1-ModBus-TCP-Device-Server
-Provides ModBus/TCP server on port 502 (modbus) via WIFI.  
+Provides ModBus/TCP server on port 502 (modbus) via WIFI.
+
 Supports
 	BMP280 (Up to 2)
 	HTU21 (Up to 2)
