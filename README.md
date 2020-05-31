@@ -19,7 +19,7 @@ Arduino IDE setup used for my Wemos D1 Mini
 	IwIP Variant: "v2 Lower Memory"
 	VTables: "Flash"
 
-Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already completed)
+Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already done
   
 ------------------------------------------------------
 ModBus Register usage
