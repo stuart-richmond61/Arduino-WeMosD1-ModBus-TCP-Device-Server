@@ -39,7 +39,9 @@ Integer status values
     40065  R(64) HTU21 Count
     40066  R(65) DS18B20 Count
     40067  R(66) TSL 2561 Count
-    40068 R(67) Client connection count
+    40068  R(67) Client connection count
+    40069  R(68) D0 input status
+    40070  R(69) D0 change of state count (Rising edge)
 
 Integer device readings
 
