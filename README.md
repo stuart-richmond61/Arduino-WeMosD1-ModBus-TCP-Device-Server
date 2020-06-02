@@ -1,5 +1,7 @@
 # Arduino-WeMosD1-ModBus-TCP-Device-Server
-Provides ModBus/TCP server on port 502 (modbus) via WIFI.
+Provides ModBus/TCP server on port 502 (modbus) via WIFI.  Can be built using OTA support.
+
+Note: For OTA using IDE, I had to use post #43 fix from https://forum.arduino.cc/index.php?topic=575560.30  Update Arduino to use jmdns-3.5.5.jar vs. jmdns-3.5.3
 
 ------------------------------------------------------
 Device support
