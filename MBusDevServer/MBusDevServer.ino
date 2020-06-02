@@ -35,13 +35,22 @@ D0     - input from motion sensor if connected
   Change log:
     02-01-2020  Modified to update DS18 device one per loop iteration
     05-27-2020  Working on RCWL-0516 radar motion detector
+    06-01-2020  Add OTA (over the air) update build option
+    01-01-2020  Add Scan timer modbus register (MS per scan)
   
 */
+#define SRVR_DATE "06-01-2020  Author: Stu Richmond"
+#define SRVR_MAJOR 1
+#define SRVR_MINOR 9
+//
+// Unomment USE_OTA to have build include Over The Air programming code
+//
+#define USE_OTA
+//
+// Pin to associate motion detector input (on motion detected, off normal)
+//
 #define MOTION_PIN D0
 
-#define SRVR_DATE "05-27-2020  Author: Stu Richmond"
-#define SRVR_MAJOR 1
-#define SRVR_MINOR 7
 //
 //Caution: Keep UPDATERATEDS18 > UPDATERATEMS
 //
@@ -120,6 +129,8 @@ D0     - input from motion sensor if connected
 //    40069 R(68) Motion detector Pin
 #define MOTION_CNT_BASE 69
 //    40070 R(69) Motion detector counter
+#define SCAN_MS_BASE 70
+//    40071 R(70) Motion detector counter
 //
 // Integer 16 values
 #define BMP1_I16_TEMP_BASE 100
@@ -179,7 +190,7 @@ D0     - input from motion sensor if connected
 #define USE_HTU21_1
 //#define USE_HTU21_2
 
-//#define USE_TSL2561
+#define USE_TSL2561
 //
 //=======================================
 // DEBUGI2C definition will include an I2C
@@ -191,6 +202,11 @@ D0     - input from motion sensor if connected
 
 #include <SPI.h>
 #include <ESP8266WiFi.h>
+#ifdef USE_OTA
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#endif
 
 //==== Onewire DS18B20 
 #ifdef USE_DS18B20
@@ -331,6 +347,34 @@ void setup() {
   }
 printf(Serial,"-- Init beginning --\n\r");
 printf(Serial,"MBusDevServer v%d.%d  %s\n\r",SRVR_MAJOR,SRVR_MINOR,SRVR_DATE);
+printf(Serial,"  Build Options:");
+#ifdef USE_OTA
+printf(Serial,"OTA ");
+#endif
+#ifdef USE_BMP280_1
+printf(Serial,"BMP280_1 ");
+#endif
+#ifdef USE_BMP280_2
+printf(Serial,"BMP280_2 ");
+#endif
+#ifdef USE_HTU21_1
+printf(Serial,"HTU21_1 ");
+#endif
+#ifdef USE_HTU21_2
+printf(Serial,"HTU21_2 ");
+#endif
+#ifdef USE_TSL2561
+printf(Serial,"TSL2561 ");
+#endif
+#ifdef USE_DS18B20
+printf(Serial,"DS18B20 ");
+#endif
+#ifdef DEBUGI2C
+printf(Serial,"DEBUGI2C ");
+#endif
+
+printf(Serial," MOTION_PIN: %d ",MOTION_PIN);
+printf(Serial,"\n\r");
 
 pinMode(MOTION_PIN, INPUT);
 LastMotion = 0;
@@ -421,6 +465,55 @@ MotionCount = 0;
 
   // Print connection status:
     printWifiStatus();
+
+  // start OTA if included
+#ifdef USE_OTA
+ // Port defaults to 8266
+  // ArduinoOTA.setPort(8266);
+
+  // Hostname defaults to esp8266-[ChipID]
+  // ArduinoOTA.setHostname("myesp8266");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    printf(Serial,"Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    printf(Serial, "Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+#endif
 
   // Start server listenning
   wifiServer.begin();
@@ -529,6 +622,7 @@ void UpdateModbusInt16Register(uint8_t BaseRegister, float val)
 //        printf(Serial,"UpdateModbusInt16Register: addr: %d (R%d) val - %s  int - %d  uint - %d\n\r",BaseRegister+1,BaseRegister,fstr,x.ival, x.uival);
 //  printf(Serial,".");
 }  
+
 //
 //===========================================================================
 //
@@ -538,13 +632,12 @@ void UpdateModbusInt16Register(uint8_t BaseRegister, float val)
 // modbus register (floating and integer)
 //
 
-void UpdateModbusRegisters()
+void UpdateModbusRegistersEveryScan()
 {
   float curvalue;
   char fstr[11];  
   float CurMotion;
   
-//printf(Serial,"UpdateModbusRegisters entered...\n\r");
   int rssi = WiFi.RSSI();
 //  printf(Serial," rssi:%ld   base:%d\n\r",rssi,WIFI_RSSI_BASE);
   modbusTCPServer.inputRegisterWrite(WIFI_RSSI_BASE, rssi);      
@@ -558,7 +651,6 @@ void UpdateModbusRegisters()
     }
     LastMotion = CurMotion;
   }
-
 // -----  Update register entries for HTU21 #1                
 #ifdef USE_HTU21_1    
   if (HTU1State==true) {
@@ -646,31 +738,6 @@ void UpdateModbusRegisters()
         UpdateModbusInt16Register(BMP2_I16_PRESS_BASE,curvalue);
    }
 #endif      
-#ifdef USE_DS18B20
-    if ((ds.getNumberOfDevices()>0)) {
-      delta = millis() - DS18UpdateLastRun;
-      if (( delta > UPDATERATEDS18 ) ) {  // Run one read per scan
-        DS18UpdateLastRun = millis();
-//        uint32_t rdelta;
-//        rdelta = millis();
-//        printf(Serial,"DS18 Reading ");
-           ds.select(DS18AddressList[currentDS18]);
-           curvalue=ds.getTempC();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"DS18(%d): %s    millis:%ld\n\r",currentDS18,fstr,millis()-rdelta);
-           UpdateModbusFloatRegister(DS18_FP_BASE+(currentDS18*2),curvalue);
-           UpdateModbusInt16Register(DS18_I16_BASE+currentDS18,curvalue);
-           currentDS18++;
-           if ((currentDS18>=ds.getNumberOfDevices())||(currentDS18>=MAXDS)) currentDS18 = 0;
-      }
-    } else {
-           curvalue=-9999.0;
-           for (int i=0;i<MAXDS;i++) { 
-              UpdateModbusFloatRegister(DS18_FP_BASE+(i*2),curvalue);
-              UpdateModbusInt16Register(DS18_I16_BASE+i,curvalue);
-            }
-    }
-#endif
 #ifdef USE_TSL2561
     if (TSLState==true) {
          if (tsl.ReadLightNoBlock()) { // try until it completes
@@ -701,6 +768,48 @@ void UpdateModbusRegisters()
         UpdateModbusInt16Register(TSL_I16_IR_BASE,curvalue);
     }
 #endif
+
+}
+//
+//===========================================================================
+//
+// Called from main loop at UPDATERATEMS millisecond period
+//
+// Reads each device configured/available, and stores result into associated
+// modbus register (floating and integer)
+//
+
+void UpdateModbusRegisters()
+{
+  float curvalue;
+  char fstr[11];  
+  
+//printf(Serial,"UpdateModbusRegisters entered...\n\r");
+#ifdef USE_DS18B20
+    if ((ds.getNumberOfDevices()>0)) {
+      delta = millis() - DS18UpdateLastRun;
+      if (( delta > UPDATERATEDS18 ) ) {  // Run one read per scan
+        DS18UpdateLastRun = millis();
+//        uint32_t rdelta;
+//        rdelta = millis();
+//        printf(Serial,"DS18 Reading ");
+           ds.select(DS18AddressList[currentDS18]);
+           curvalue=ds.getTempC();
+//        dtostrf(curvalue,8,2,fstr);
+//        printf(Serial,"DS18(%d): %s    millis:%ld\n\r",currentDS18,fstr,millis()-rdelta);
+           UpdateModbusFloatRegister(DS18_FP_BASE+(currentDS18*2),curvalue);
+           UpdateModbusInt16Register(DS18_I16_BASE+currentDS18,curvalue);
+           currentDS18++;
+           if ((currentDS18>=ds.getNumberOfDevices())||(currentDS18>=MAXDS)) currentDS18 = 0;
+      }
+    } else {
+           curvalue=-9999.0;
+           for (int i=0;i<MAXDS;i++) { 
+              UpdateModbusFloatRegister(DS18_FP_BASE+(i*2),curvalue);
+              UpdateModbusInt16Register(DS18_I16_BASE+i,curvalue);
+            }
+    }
+#endif
 //printf(Serial,"UpdateModbusRegisters exited...\n\r");
   
 }
@@ -725,7 +834,21 @@ void PrintByte(unsigned char c)
 // Note this code steps on registers each iteration,
 // no device updates to holding registers are retained.
 //
+unsigned int LastScanMilli;
+unsigned int DeltaScanMilli;
+unsigned int CurScanMilli;
 void loop() {
+ //
+ // update scan time
+   CurScanMilli = millis();
+   DeltaScanMilli = CurScanMilli-LastScanMilli;
+   modbusTCPServer.inputRegisterWrite(SCAN_MS_BASE, DeltaScanMilli); 
+   LastScanMilli = CurScanMilli; 
+  
+  // test OTA
+#ifdef USE_OTA
+  ArduinoOTA.handle();
+#endif  
   // listen for client
   WiFiClient client = wifiServer.available();
   
@@ -752,9 +875,35 @@ void loop() {
 //  process function requests from client until disconnected
 //
     while (client.connected()) {
-      delta = millis()-MainLoopLastRun;
+ //
+  // test OTA
+#ifdef USE_OTA
+      ArduinoOTA.handle();
+#endif
+//
+//    Read millisecond counter
+//  
+      CurScanMilli = millis();
+//
+//    Calculate change since last scan
+//
+      DeltaScanMilli = CurScanMilli-LastScanMilli;
+//
+//    Update modbus register with Delta
+//      
+      modbusTCPServer.inputRegisterWrite(SCAN_MS_BASE, DeltaScanMilli); 
+//
+//    Store current millie reading for next iteration delta calc
+//    
+      LastScanMilli = CurScanMilli; 
+//
+//    Calculate MS since last processing
+//      
+      UpdateModbusRegistersEveryScan();
+
+      delta = CurScanMilli-MainLoopLastRun;
       if (delta >= UPDATERATEMS) {
-        MainLoopLastRun = millis(); 
+        MainLoopLastRun = CurScanMilli; 
         UpdateModbusRegisters();
       }
 //      printf(Serial,"Calling modbusTCPServer.poll\n\r");
