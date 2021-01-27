@@ -10,12 +10,20 @@
   Uses WiFi Modbus TCP Server for multiple devices, using Adafruit libraries in most cases.  Device inclusion is set
   using defines below.
 
+  To update sketch using OTA (over the air):  (VPCWin7P has it)
+    1) Open Arduino IDE
+    2) Load sketch to upload
+    3) Select Tools / Port
+       Arduino IP should be detected and show in "Network Ports" list
+    4) Select Sketch / Upload
+
 #define USE_DS18B20   - build with support for 1 or more DS18B20s on OneWire bus
 #define USE_BMP280_1  - build with support for BMP280 at alternate address I2C
 #define USE_BMP280_2  - build with support for BMP280 at primary address I2C
 #define USE_HTU21_1   - build with support for HTU21 at primary address I2C
 #define USE_HTU21_2   - build with support for HTU21 at alternate address I2C
 #define USE_TSL2561   - build with support for TSL2561 on I2C
+#define USE_DO        - build with support for driving digital outputs
 
   Uilizes following libraries (some dependant on above defines) :
 
@@ -29,19 +37,25 @@
 #include <DS18B20.h>
 
 Pin Usage:
-D4     - OneWire bus for DS18B20s if included
 D0     - input from motion sensor if connected
+D1     - SCL for I2C devices BMP, HTU, TSL
+D2     - SDA for I2C devices
+D4     - OneWire bus for DS18B20s if included
+D5     - DO 000001
+D6     - DO 000002
 
   Change log:
     02-01-2020  Modified to update DS18 device one per loop iteration
     05-27-2020  Working on RCWL-0516 radar motion detector
     06-01-2020  Add OTA (over the air) update build option
-    01-01-2020  Add Scan timer modbus register (MS per scan)
+    06-01-2020  Add Scan timer modbus register (MS per scan)
+    06-04-2020  Add Off delay for motion (for 1 minute historian)
+    01-23-2021  Add support for DOs
   
 */
-#define SRVR_DATE "06-01-2020  Author: Stu Richmond"
+#define SRVR_DATE "01-23-2021  Author: Stu Richmond"
 #define SRVR_MAJOR 1
-#define SRVR_MINOR 9
+#define SRVR_MINOR 11
 //
 // Unomment USE_OTA to have build include Over The Air programming code
 //
@@ -50,7 +64,17 @@ D0     - input from motion sensor if connected
 // Pin to associate motion detector input (on motion detected, off normal)
 //
 #define MOTION_PIN D0
+//
+// Pins for Digital output control
+//
+#define USE_DO
 
+#ifdef USE_DO
+#define DO0_PIN D5
+#define DO1_PIN D6
+#endif
+
+#define INITIAL_DO_STATE HIGH
 //
 //Caution: Keep UPDATERATEDS18 > UPDATERATEMS
 //
@@ -65,7 +89,19 @@ D0     - input from motion sensor if connected
 //
 //  
 //
+//=======================================  ModBus coil/register address usage
+//  modbusTCPServer.configureCoils(0x00, NUMREGISTERS);
+//
+// ModBus DO Coils
+//
+// Coil addresses for DOs
+#define DO_BASE 0
+//    00001 R(0) DO 1
+//    00002 R(1) DO 2
+#define MAXDOS 1
+
 //=======================================
+//  modbusTCPServer.configureInputRegisters(0x00, NUMREGISTERS);
 //
 //  ModBus Register assignments
 //  floating point values
@@ -125,12 +161,15 @@ D0     - input from motion sensor if connected
 //    40067  R(66) TSL 2561 Count
 #define SRVR_CLIENT_CNT_BASE 67
 //    40068 R(67) Client connection count
-#define MOTION_PIN_BASE 68
-//    40069 R(68) Motion detector Pin
-#define MOTION_CNT_BASE 69
-//    40070 R(69) Motion detector counter
-#define SCAN_MS_BASE 70
+#define MOTION_PIN_BASED 68
+//    40069 R(68) Motion detector Pin Off delayed
+#define MOTION_PIN_BASE 69
+//    40070 R(69) Motion detector Pin Instant
+#define MOTION_CNT_BASE 70
 //    40071 R(70) Motion detector counter
+#define SCAN_MS_BASE 71
+//    40072 R(70) Scan time for loop
+
 //
 // Integer 16 values
 #define BMP1_I16_TEMP_BASE 100
@@ -170,9 +209,16 @@ D0     - input from motion sensor if connected
 //    40126  R(75) DS18B20 #5
 //    40127  R(76) DS18B20 #6
 //    40128  R(77) DS18B20 #7
+
+//================================
+//  modbusTCPServer.configureDiscreteInputs(0x00, NUMREGISTERS);
+//  modbusTCPServer.configureHoldingRegisters(0x00, NUMREGISTERS);
+
 /*
 
 */
+// NUMREGISTERS is used to configure modbus tables
+//              this is used to allocate registers and coils
 #define NUMREGISTERS 128+2
 //
 //=======================================
@@ -334,12 +380,33 @@ int WireScan()
 }
 #endif
 
+//
+//=============================================================================
+//
+void printWifiStatus() {
+  // SSID
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
 
+  // IP address received:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Addr: ");
+  Serial.println(ip);
+
+  // RSSI:
+  long rssi = WiFi.RSSI();
+  Serial.print("RSSI:");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
 //===============================================================
 float LastMotion;
 float MotionCount;
+#define OFFDELAYMS 60000
+float LastOn;
 
 void setup() {
+  int i;
   //Initialize serial and wait for port to open:
   Serial.begin(74880);
   while (!Serial) {
@@ -369,16 +436,45 @@ printf(Serial,"TSL2561 ");
 #ifdef USE_DS18B20
 printf(Serial,"DS18B20 ");
 #endif
+#ifdef USE_DO
+printf(Serial,"DO ");
+#endif
 #ifdef DEBUGI2C
 printf(Serial,"DEBUGI2C ");
 #endif
 
 printf(Serial," MOTION_PIN: %d ",MOTION_PIN);
-printf(Serial,"\n\r");
 
 pinMode(MOTION_PIN, INPUT);
 LastMotion = 0;
 MotionCount = 0;
+//
+// 01-23-2021  Add DO functionality
+//
+#ifdef USE_DO
+#ifdef DO0_PIN
+pinMode(DO0_PIN,OUTPUT);
+digitalWrite(DO0_PIN,INITIAL_DO_STATE);
+printf(Serial," DOs: %d ",DO0_PIN);
+#endif
+#ifdef DO1_PIN
+pinMode(DO1_PIN,OUTPUT);
+digitalWrite(DO1_PIN,INITIAL_DO_STATE);
+printf(Serial,"%d ",DO1_PIN);
+#endif
+#ifdef DO2_PIN
+pinMode(DO2_PIN,OUTPUT);
+digitalWrite(DO2_PIN,INITIAL_DO_STATE);
+printf(Serial,"%d ",DO2_PIN);
+#endif
+#ifdef DO3_PIN
+pinMode(DO3_PIN,OUTPUT);
+digitalWrite(DO3_PIN,INITIAL_DO_STATE);
+printf(Serial,"%d ",DO3_PIN);
+#endif
+#endif
+// 01-23-2021 end add DO functionality
+printf(Serial,"\n\r");
 
 #ifdef DEBUGI2C  
   WireScan();
@@ -529,6 +625,20 @@ MotionCount = 0;
   // see defines at top of this file for register assignment usage
   modbusTCPServer.configureInputRegisters(0x00, NUMREGISTERS);
 
+  // 01/23/2021 add DO support
+  // configure coils for outputs at base address 0x00
+  modbusTCPServer.configureCoils(0x00, NUMREGISTERS);
+
+  // Initialize coils to ON
+  for(i=0;i<=MAXDOS;i++) {
+    modbusTCPServer.coilWrite(DO_BASE+i,HIGH);
+  }
+
+//  modbusTCPServer.configureDiscreteInputs(0x00, NUMREGISTERS);
+//  modbusTCPServer.configureHoldingRegisters(0x00, NUMREGISTERS);
+  
+  // 01/23/2021 end add DO support
+  
   // track number of client connections, and make available on
   // modbus register
   ClientCount = 0;
@@ -643,7 +753,17 @@ void UpdateModbusRegistersEveryScan()
   modbusTCPServer.inputRegisterWrite(WIFI_RSSI_BASE, rssi);      
 //
   CurMotion = digitalRead(MOTION_PIN);
+  // Store instant Discrete in value
+  //Delay off for TimeDelayOff MS
   modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASE,CurMotion);      
+  if (CurMotion == 1) {
+    LastOn = millis();  
+    modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASED,CurMotion);      
+  } else {
+    if ((millis()-LastOn)>OFFDELAYMS) {
+     modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASED,CurMotion);        
+    }
+  }
   if (CurMotion != LastMotion) { // change detected
     if (CurMotion==1) {
       MotionCount++;
@@ -768,6 +888,107 @@ void UpdateModbusRegistersEveryScan()
         UpdateModbusInt16Register(TSL_I16_IR_BASE,curvalue);
     }
 #endif
+
+}
+//
+//===========================================================================
+//
+void UpdateModbusCoilsEveryScan()
+{
+  float curvalue;
+  char fstr[11];  
+  long CurDO;
+  long LastDO;
+  int DOPin;
+  int i;
+//  // read the current value of the coil
+//  int coilValue = modbusTCPServer.coilRead(0x00);
+
+//  if (coilValue) {
+//    // coil value set, turn LED on
+//    digitalWrite(ledPin, HIGH);
+//  } else {
+//    // coild value clear, turn LED off
+//    digitalWrite(ledPin, LOW);
+//  }
+
+  DOPin = -1;
+  for (i=DO_BASE;i<=MAXDOS;i++) {
+    CurDO = modbusTCPServer.coilRead(DO_BASE+i);
+    switch (i) {
+      case 0:
+        #ifdef DO0_PIN      
+          DOPin = DO0_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 1:
+        #ifdef DO1_PIN      
+          DOPin = DO1_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 2:
+        #ifdef DO2_PIN      
+          DOPin = DO2_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 3:
+        #ifdef DO3_PIN      
+          DOPin = DO3_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 4:
+        #ifdef DO4_PIN      
+          DOPin = DO4_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 5:
+        #ifdef DO5_PIN      
+          DOPin = DO5_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 6:
+        #ifdef DO6_PIN      
+          DOPin = DO6_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      case 7:
+        #ifdef DO7_PIN      
+          DOPin = DO7_PIN;
+        #else
+          DOPin = -1;
+        #endif
+        break;
+      default:
+        DOPin = -1;
+    }
+    if (DOPin != -1) {
+      LastDO = digitalRead(DOPin);
+      if (CurDO==0) {
+        digitalWrite(DOPin,LOW);
+      } else {
+        digitalWrite(DOPin,HIGH);
+      }
+      if (LastDO != CurDO) {
+        printf (Serial,"COS: DO[%d] Pin:%d From: %2.2X  To: %2.2X\n\r",i,DOPin,LastDO,CurDO);
+      }
+    }
+  }
+
+// 01-23-2021 end add DO functionality
 
 }
 //
@@ -900,7 +1121,9 @@ void loop() {
 //    Calculate MS since last processing
 //      
       UpdateModbusRegistersEveryScan();
-
+// 01-23-2021 add DOs
+      UpdateModbusCoilsEveryScan();
+// 01-23-2021
       delta = CurScanMilli-MainLoopLastRun;
       if (delta >= UPDATERATEMS) {
         MainLoopLastRun = CurScanMilli; 
@@ -914,23 +1137,4 @@ void loop() {
     }
     printf(Serial,"Client disconnected...\n\r");
   }
-}
-//
-//=============================================================================
-//
-void printWifiStatus() {
-  // SSID
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  // IP address received:
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Addr: ");
-  Serial.println(ip);
-
-  // RSSI:
-  long rssi = WiFi.RSSI();
-  Serial.print("RSSI:");
-  Serial.print(rssi);
-  Serial.println(" dBm");
 }
