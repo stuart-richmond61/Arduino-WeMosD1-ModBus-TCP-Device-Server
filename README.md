@@ -11,6 +11,7 @@ Device support
 	TSL2561 (1)
 	DS18B20 (Up to 8)
 	TTL input state change counter (1)
+	Discrete output coils (2)
 
 ------------------------------------------------------
 Arduino IDE setup used for my Wemos D1 Mini 
@@ -25,9 +26,22 @@ Arduino IDE setup used for my Wemos D1 Mini
 	VTables: "Flash"
 
 Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already done
-  
 ------------------------------------------------------
-ModBus Register usage
+  
+WeMosD1 Pin Usage:
+D0     - input from motion sensor if connected
+D1     - SCL for I2C devices BMP, HTU, TSL
+D2     - SDA for I2C devices
+D4     - OneWire bus for DS18B20s if included
+D5     - DO 000001
+D6     - DO 000002
+
+------------------- ModBus Coils -------------------------
+
+    00001 Pin D5
+    00002 Pin D6
+
+------------------- ModBus Registers  --------------------
 
 Floating point (2 register values) device readings
 
