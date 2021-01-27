@@ -28,7 +28,8 @@ Arduino IDE setup used for my Wemos D1 Mini
 Note: First use Board manager to install support for ESP8266 boards for Wemos D1 Mini if not already done
 
 ------------------------------------------------------ 
-WeMosD1 Pin Usage:
+WeMosD1 Pin Usage
+
     D0     - input from motion sensor if connected
     D1     - SCL for I2C devices BMP, HTU, TSL
     D2     - SDA for I2C devices
