@@ -1,3 +1,4 @@
+<meta name="msvalidate.01" content="27B8E10DF0793CCBA52613904B7F864A" />
 # Arduino-WeMosD1-ModBus-TCP-Device-Server
 Provides ModBus/TCP server on port 502 (modbus) via WIFI.  Can be built using OTA support.
 
