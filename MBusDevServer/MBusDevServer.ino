@@ -16,7 +16,8 @@
     3) Select Tools / Port
        Arduino IP should be detected and show in "Network Ports" list
     4) Select Sketch / Upload
-
+    
+#define USE_MQTT      - Build in MQTT client
 #define USE_DS18B20   - build with support for 1 or more DS18B20s on OneWire bus
 #define USE_BMP280_1  - build with support for BMP280 at alternate address I2C
 #define USE_BMP280_2  - build with support for BMP280 at primary address I2C
@@ -51,198 +52,75 @@ D6     - DO 000002
     06-01-2020  Add Scan timer modbus register (MS per scan)
     06-04-2020  Add Off delay for motion (for 1 minute historian)
     01-23-2021  Add support for DOs
+    02-19-2021  Comments and version number update
+    02-06-2022  MQTT client addition
+    02-10-2022  Separate configuration items into header files
+    
   
 */
-#define SRVR_DATE "01-23-2021  Author: Stu Richmond"
-#define SRVR_MAJOR 1
-#define SRVR_MINOR 11
-//
-// Unomment USE_OTA to have build include Over The Air programming code
-//
-#define USE_OTA
-//
-// Pin to associate motion detector input (on motion detected, off normal)
-//
-#define MOTION_PIN D0
-//
-// Pins for Digital output control
-//
-#define USE_DO
+#include "config.h"
 
-#ifdef USE_DO
-#define DO0_PIN D5
-#define DO1_PIN D6
-#endif
+#include "MBusConfig.h"
 
-#define INITIAL_DO_STATE HIGH
-//
-//Caution: Keep UPDATERATEDS18 > UPDATERATEMS
-//
-#define UPDATERATEMS 1000
-#define UPDATERATEDS18 10000
+#include "MQTTConfig.h"
+
 //
 // Timers for managing poll and update timing in main loop
 //
   uint32_t MainLoopLastRun;
   uint32_t DS18UpdateLastRun;
   uint32_t delta;
-//
-//  
-//
-//=======================================  ModBus coil/register address usage
-//  modbusTCPServer.configureCoils(0x00, NUMREGISTERS);
-//
-// ModBus DO Coils
-//
-// Coil addresses for DOs
-#define DO_BASE 0
-//    00001 R(0) DO 1
-//    00002 R(1) DO 2
-#define MAXDOS 1
-
-//=======================================
-//  modbusTCPServer.configureInputRegisters(0x00, NUMREGISTERS);
-//
-//  ModBus Register assignments
-//  floating point values
-//
-#define BMP1_FP_TEMP_BASE 0
-//    40001  R(0) R(1)  BMP/E #1 Temperature
-#define BMP1_FP_PRESS_BASE 2
-//    40003  R(2) R(3)  BMP/E #1 Pressure
-#define BME1_FP_HUMID_BASE 4
-//    40005  R(4) R(5)  BME #1 Humidity (if build using BME280)
-#define BMP2_FP_TEMP_BASE 6
-//    40007  R(6) R(7)  BMP/E #2 Temperature
-#define BMP2_FP_PRESS_BASE 8
-//    40009  R(8) R(9)  BMP/E #2 Pressure
-#define BME2_FP_HUMID_BASE 10
-//    40011  R(10)R(11) BME #2 Humidity (if build using BME280)
-#define HTU1_FP_HUMID_BASE 20
-//    40021  R(20) R(21) HTU21 #1 Humidity
-#define HTU1_FP_TEMP_BASE 22
-//    40023  R(22) R(23) HTU21 #1 Temperature
-#define HTU2_FP_HUMID_BASE 24
-//    40025  R(24) R(25) HTU21 #2 Humidity
-#define HTU2_FP_TEMP_BASE 26
-//    40027  R(26) R(27) HTU21 #2 Temperature
-//
-#define DS18_FP_BASE 30
-//    40031  R(30) R(31) DS18B20 #0
-//    40033  R(32) R(33) DS18B20 #1
-//    40035  R(34) R(35) DS18B20 #2
-//    40037  R(36) R(37) DS18B20 #3
-//    40039  R(38) R(39) DS18B20 #4
-//    40041  R(40) R(41) DS18B20 #5
-//    40043  R(42) R(43) DS18B20 #6
-//    40045  R(44) R(45) DS18B20 #7
-#define MAXDS 8
-
-#define TSL_FP_LUMEN_BASE 50
-//    40051  R(50) R(51)  TSL Luminosity reading
-#define TSL_FP_BB_BASE 52
-//    40053  R(52) R(53)  TSL broadband reading
-#define TSL_FP_IR_BASE 54
-//    40055  R(54) R(55)  TSL ir reading
-
-#define SRVR_MAJOR_BASE 60
-//    40061  R(60) Major version #
-#define SRVR_MINOR_BASE 61
-//    40062  R(61) Minor version #
-#define WIFI_RSSI_BASE 62
-//    40063  R(62) RSSI
-#define DEV_BMPCNT_BASE 63
-//    40064  R(63) BMP Count
-#define DEV_HTUCNT_BASE 64
-//    40065  R(64) HTU21 Count
-#define DEV_DS18CNT_BASE 65
-//    40066  R(65) DS18B20 Count
-#define DEV_TSLCNT_BASE 66
-//    40067  R(66) TSL 2561 Count
-#define SRVR_CLIENT_CNT_BASE 67
-//    40068 R(67) Client connection count
-#define MOTION_PIN_BASED 68
-//    40069 R(68) Motion detector Pin Off delayed
-#define MOTION_PIN_BASE 69
-//    40070 R(69) Motion detector Pin Instant
-#define MOTION_CNT_BASE 70
-//    40071 R(70) Motion detector counter
-#define SCAN_MS_BASE 71
-//    40072 R(70) Scan time for loop
 
 //
-// Integer 16 values
-#define BMP1_I16_TEMP_BASE 100
-//    40101  R(100)  BMP/E #1 Temperature
-#define BMP1_I16_PRESS_BASE 101
-//    40102  R(101)  BMP/E #1 Pressure
-#define BME1_I16_HUMID_BASE 102
-//    40103  R(102)  BME #1 Humidity (if build using BME280)
-#define BMP2_I16_TEMP_BASE 103
-//    40104  R(103)  BMP/E #2 Temperature
-#define BMP2_I16_PRESS_BASE 104
-//    40105  R(104)  BMP/E #2 Pressure
-#define BME2_I16_HUMID_BASE 105
-//    40106  R(105)  BME #2 Humidity (if build using BME280)
-#define HTU1_I16_HUMID_BASE 110
-//    40111  R(110) HTU21 #1 Humidity
-#define HTU1_I16_TEMP_BASE 111
-//    40112  R(111) HTU21 #1 Temperature
-#define HTU2_I16_HUMID_BASE 112
-//    40113  R(112) HTU21 #2 Humidity
-#define HTU2_I16_TEMP_BASE 113
-//    40114  R(113) HTU21 #2 Temperature
-#define TSL_I16_LUMEN_BASE 40
-//    40115  R(114) TSL Luminosity reading
-#define TSL_I16_BB_BASE 42
-//    40116  R(115) TSL broadband reading
-#define TSL_I16_IR_BASE 44
-//    40117  R(116) TSL ir reading
-
-
-#define DS18_I16_BASE 120
-//    40121  R(120) DS18B20 #0
-//    40122  R(71) DS18B20 #1
-//    40123  R(72) DS18B20 #2
-//    40124  R(73) DS18B20 #3
-//    40125  R(74) DS18B20 #4
-//    40126  R(75) DS18B20 #5
-//    40127  R(76) DS18B20 #6
-//    40128  R(77) DS18B20 #7
-
-//================================
-//  modbusTCPServer.configureDiscreteInputs(0x00, NUMREGISTERS);
-//  modbusTCPServer.configureHoldingRegisters(0x00, NUMREGISTERS);
-
-/*
-
-*/
-// NUMREGISTERS is used to configure modbus tables
-//              this is used to allocate registers and coils
-#define NUMREGISTERS 128+2
+//---------------------------------------
 //
-//=======================================
-//
-// Select which devices to include code for
-// ONE_WIRE_BUS sets pin to use for onewire 
-// devices
-//
-#define USE_DS18B20
-#define ONE_WIRE_BUS D4
+#ifdef USE_MQTT
+//const char MQTTtopicPrefix[]  = "DevServer/";
+// set prefix to IP address of device
+#define MAXPREFIX 20
+char MQTTtopicPrefix[MAXPREFIX];
 
-#define USE_BMP280_1
-//#define USE_BMP280_2
+// careful, order tied to STAT defines
+const char * MQTTtopicServerStats[] = {
+"STAT/SRVR_MAJOR",
+"STAT/SRVR_MINOR",
+"STAT/WIFI_RSSI",
+"STAT/BMPCNT",
+"STAT/HTUCNT",
+"STAT/DS18CNT",
+"STAT/TSLCNT",
+"STAT/CLIENT_CNT",
+"STAT/MOTION_PIND",
+"STAT/MOTION_PIN",
+"STAT/MOTION_CNT",
+"STAT/SCAN_MS",
+0
+};
 
-#define USE_HTU21_1
-//#define USE_HTU21_2
+#endif
 
-#define USE_TSL2561
+#define STAT_SRVR_MAJOR 0
+#define STAT_SRVR_MINOR 1
+#define STAT_WIFI_RSSI 2
+#define STAT_BMPCNT 3
+#define STAT_HTUCNT 4
+#define STAT_DS18CNT 5
+#define STAT_TSLCNT 6
+#define STAT_CLIENT_CNT 7
+#define STAT_MOTION_PIND 8
+#define STAT_MOTION_PIN 9
+#define STAT_MOTION_CNT 10
+#define STAT_SCAN_MS 11
+
+#define NUM_SERVER_STATS 12
+
+int ServerStats[NUM_SERVER_STATS];
+
 //
 //=======================================
 // DEBUGI2C definition will include an I2C
 // address scan in init with output to Serial
 //
-#define DEBUGI2C
 
 #include "myprintf.h"
 
@@ -301,6 +179,55 @@ Adafruit_BMP280 bmp1;
 #ifdef USE_BMP280_2
 Adafruit_BMP280 bmp2; // use I2C interface
 #endif
+
+
+
+#define BMP1_TEMP 0
+#define BMP1_PRESS 1
+#define BMP1_HUMIDITY 2
+#define BMP2_TEMP 3
+#define BMP2_PRESS 4
+#define BMP2_HUMIDITY 5
+#define HTU1_TEMP 6
+#define HTU1_HUMIDITY 7
+#define HTU2_TEMP 8
+#define HTU2_HUMIDITY 9
+#define TSL_LUMIN 10
+#define TSL_BB 11
+#define TSL_IR 12
+#define DS18_0 13
+// reserve MAXDS
+#define NUM_PVS DS18_0 + 8
+
+#ifdef USE_MQTT
+const char * MQTTtopicPV[] = {
+"PV/BMP1_TEMP",
+"PV/BMP1_PRESS",
+"PV/BMP1_HUMIDITY",
+"PV/BMP2_TEMP",
+"PV/BMP2_PRESS",
+"PV/BMP2_HUMIDITY",
+"PV/HTU1_TEMP",
+"PV/HTU1_HUMIDITY",
+"PV/HTU2_TEMP",
+"PV/HTU2_HUMIDITY",
+"PV/TSL_LUMIN",
+"PV/TSL_BB",
+"PV/TSL_IR",
+"PV/DS18_0",
+"PV/DS18_1",
+"PV/DS18_2",
+"PV/DS18_3",
+"PV/DS18_4",
+"PV/DS18_5",
+"PV/DS18_6",
+"PV/DS18_7",
+0
+};
+#endif
+
+float PV_values[NUM_PVS]; //
+
 //
 // Device status variables and counts
 // Counts are made available via modbus
@@ -319,9 +246,15 @@ Adafruit_BMP280 bmp2; // use I2C interface
   int DS18B20Count;
 
   int ClientCount;
-  
+
+#ifdef USE_MQTT
+#include "ArduinoMqttClient.h"
+#endif
+
+#ifdef USE_MODBUS
 #include "ModbusTCPClient.h"
 #include "ModbusTCPServer.h"
+#endif
 //
 // Edit this file with your WIFI settings
 //
@@ -332,15 +265,26 @@ int keyIndex = 0;                 // your network key Index number (needed only 
 
 int status = WL_IDLE_STATUS;
 
+//==============  MODBUS configuration ==================
+#ifdef USE_MODBUS
 WiFiServer wifiServer(502);
-
 ModbusTCPServer modbusTCPServer;
-//
-//=========== Serial to RS485 ============================
-// removed, unable to get to work on D1 mini
-//#include <SoftwareSerial.h>
-//SoftwareSerial  SSerial(D6,D7);  // RX, TX
+#endif
 
+//============== MQTT configuration ====================
+#ifdef USE_MQTT
+WiFiClient wifiClient;
+MqttClient mqttClient(wifiClient);
+const char MQTTbroker[] = "192.168.1.111";
+int        MQTTport     = 1883;
+
+//set interval for sending messages (milliseconds)
+const long MQTTinterval = 8000;
+unsigned long MQTTpreviousMillis = 0;
+
+int MQTTState = 0;
+#endif
+//
 //===============================================================
 #ifdef DEBUG
 void printascii( const char * str) {
@@ -399,11 +343,13 @@ void printWifiStatus() {
   Serial.print(rssi);
   Serial.println(" dBm");
 }
-//===============================================================
+//=======================Motion detection variables ========================================
 float LastMotion;
 float MotionCount;
 #define OFFDELAYMS 60000
 float LastOn;
+
+//============================================ Setup =======================================
 
 void setup() {
   int i;
@@ -414,10 +360,22 @@ void setup() {
   }
 printf(Serial,"-- Init beginning --\n\r");
 printf(Serial,"MBusDevServer v%d.%d  %s\n\r",SRVR_MAJOR,SRVR_MINOR,SRVR_DATE);
-printf(Serial,"  Build Options:");
+
+printf(Serial,"\n\r  Build Options:");
+#ifdef USE_MODBUS
+printf(Serial,"MODBUS ");
+#endif
+#ifdef USE_MQTT
+printf(Serial,"MQTT ");
+#endif
+#ifdef DEBUGI2C
+printf(Serial,"DEBUGI2C ");
+#endif
 #ifdef USE_OTA
 printf(Serial,"OTA ");
 #endif
+
+printf(Serial,"\n\r  Device Options: ");
 #ifdef USE_BMP280_1
 printf(Serial,"BMP280_1 ");
 #endif
@@ -439,11 +397,8 @@ printf(Serial,"DS18B20 ");
 #ifdef USE_DO
 printf(Serial,"DO ");
 #endif
-#ifdef DEBUGI2C
-printf(Serial,"DEBUGI2C ");
-#endif
 
-printf(Serial," MOTION_PIN: %d ",MOTION_PIN);
+printf(Serial,"\n\r  MOTION_PIN: %d ",MOTION_PIN);
 
 pinMode(MOTION_PIN, INPUT);
 LastMotion = 0;
@@ -525,6 +480,11 @@ printf(Serial,"\n\r");
   printf(Serial,"        %d TSL2561s\n\r",TSLCount);
   printf(Serial,"\n\rOneWire Devices:\n\r");
   printf(Serial,"        %d DS18B20s\n\r",DS18B20Count);
+  ServerStats[STAT_BMPCNT] = float(BMPCount);
+  ServerStats[STAT_HTUCNT] = float(HTUCount);
+  ServerStats[STAT_TSLCNT] = float(TSLCount);
+  ServerStats[STAT_DS18CNT] = float(DS18B20Count);
+  
 #ifdef USE_DS18B20
   for (int i=0;i<DS18B20Count;i++) {
   printf(Serial,"            DS[%d]: %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X\n\r",i,
@@ -558,7 +518,8 @@ printf(Serial,"\n\r");
     //    wait 10 seconds to retry connection if not connected
     if (WiFi.status() != WL_CONNECTED) delay(10000);
   }
-
+  IPAddress ip = WiFi.localIP();
+  sprintf(MQTTtopicPrefix,"%d.%d.%d.%d/",ip[0],ip[1],ip[2],ip[3]);
   // Print connection status:
     printWifiStatus();
 
@@ -611,7 +572,12 @@ printf(Serial,"\n\r");
   ArduinoOTA.begin();
 #endif
 
+  // Set bad PV signal value for initialization
+  
+        float curvalue=-9999.0;
+
   // Start server listenning
+ #ifdef USE_MODBUS
   wifiServer.begin();
   wifiServer.setNoDelay(true);  // send immediate, don't optimize
   
@@ -631,7 +597,7 @@ printf(Serial,"\n\r");
 
   // Initialize coils to ON
   for(i=0;i<=MAXDOS;i++) {
-    modbusTCPServer.coilWrite(DO_BASE+i,HIGH);
+    modbusTCPServer.coilWrite(DO_BASE+i,INITIAL_DO_STATE);
   }
 
 //  modbusTCPServer.configureDiscreteInputs(0x00, NUMREGISTERS);
@@ -642,44 +608,266 @@ printf(Serial,"\n\r");
   // track number of client connections, and make available on
   // modbus register
   ClientCount = 0;
+  ServerStats[STAT_CLIENT_CNT] = float(ClientCount);
 //
 // initialize flag bad value for all registers (fix me - initialize with first device read if present
 //
-        float curvalue=-9999.0;
-        UpdateModbusFloatRegister(HTU1_FP_TEMP_BASE,curvalue);
+        UpdateModbusFloatRegister(HTU1_FP_TEMP_BASE,curvalue);  PV_values[HTU1_TEMP]=curvalue;
         UpdateModbusInt16Register(HTU1_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(HTU1_FP_HUMID_BASE,curvalue);
+        UpdateModbusFloatRegister(HTU1_FP_HUMID_BASE,curvalue); PV_values[HTU1_HUMIDITY]=curvalue;
         UpdateModbusInt16Register(HTU1_I16_HUMID_BASE,curvalue);           
-        UpdateModbusFloatRegister(HTU2_FP_TEMP_BASE,curvalue);
+        UpdateModbusFloatRegister(HTU2_FP_TEMP_BASE,curvalue); PV_values[HTU2_TEMP]=curvalue;
         UpdateModbusInt16Register(HTU2_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(HTU2_FP_HUMID_BASE,curvalue);
+        UpdateModbusFloatRegister(HTU2_FP_HUMID_BASE,curvalue); PV_values[HTU2_HUMIDITY]=curvalue;
         UpdateModbusInt16Register(HTU2_I16_HUMID_BASE,curvalue);
-        UpdateModbusFloatRegister(BMP1_FP_TEMP_BASE,curvalue);
+        UpdateModbusFloatRegister(BMP1_FP_TEMP_BASE,curvalue); PV_values[BMP1_TEMP]=curvalue;
         UpdateModbusInt16Register(BMP1_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(BMP1_FP_PRESS_BASE,curvalue);
+        UpdateModbusFloatRegister(BMP1_FP_PRESS_BASE,curvalue); PV_values[BMP1_PRESS]=curvalue;
         UpdateModbusInt16Register(BMP1_I16_PRESS_BASE,curvalue);
-        UpdateModbusFloatRegister(BMP2_FP_TEMP_BASE,curvalue);
+        UpdateModbusFloatRegister(BMP2_FP_TEMP_BASE,curvalue); PV_values[BMP2_TEMP]=curvalue;
         UpdateModbusInt16Register(BMP2_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(BMP2_FP_PRESS_BASE,curvalue);
+        UpdateModbusFloatRegister(BMP2_FP_PRESS_BASE,curvalue); PV_values[BMP2_PRESS]=curvalue;
         UpdateModbusInt16Register(BMP2_I16_PRESS_BASE,curvalue);
-        UpdateModbusFloatRegister(TSL_FP_LUMEN_BASE,curvalue);
+        UpdateModbusFloatRegister(TSL_FP_LUMEN_BASE,curvalue); PV_values[TSL_LUMIN]=curvalue;
         UpdateModbusInt16Register(TSL_I16_LUMEN_BASE,curvalue);
-        UpdateModbusFloatRegister(TSL_FP_BB_BASE,curvalue);
+        UpdateModbusFloatRegister(TSL_FP_BB_BASE,curvalue); PV_values[TSL_BB]=curvalue;
         UpdateModbusInt16Register(TSL_I16_BB_BASE,curvalue);
-        UpdateModbusFloatRegister(TSL_FP_IR_BASE,curvalue);
+        UpdateModbusFloatRegister(TSL_FP_IR_BASE,curvalue);PV_values[TSL_IR]=curvalue;
         UpdateModbusInt16Register(TSL_I16_IR_BASE,curvalue);
+        PV_values[BMP1_HUMIDITY]=curvalue;
+        PV_values[BMP2_HUMIDITY]=curvalue;
         for (int i=0;i<MAXDS;i++) { 
               UpdateModbusFloatRegister(DS18_FP_BASE+(i*2),curvalue);
+              PV_values[DS18_0+i] = curvalue;
               UpdateModbusInt16Register(DS18_I16_BASE+i,curvalue);
         }
+    modbusTCPServer.inputRegisterWrite(DEV_BMPCNT_BASE, BMPCount); 
+    modbusTCPServer.inputRegisterWrite(DEV_HTUCNT_BASE, HTUCount); 
+    modbusTCPServer.inputRegisterWrite(DEV_TSLCNT_BASE, TSLCount); 
+    modbusTCPServer.inputRegisterWrite(DEV_DS18CNT_BASE, DS18B20Count); 
 
-// removed unable to get to work on D1 mini
-//SSerial.begin(9600);
-       
+    modbusTCPServer.inputRegisterWrite(SRVR_MAJOR_BASE, SRVR_MAJOR); 
+    modbusTCPServer.inputRegisterWrite(SRVR_MINOR_BASE, SRVR_MINOR); 
+#endif
+//
+//    Initialize PV storage array
+//
+        PV_values[HTU1_TEMP]=curvalue;
+        PV_values[HTU1_HUMIDITY]=curvalue;
+        PV_values[HTU2_TEMP]=curvalue;
+        PV_values[HTU2_HUMIDITY]=curvalue;
+        PV_values[BMP1_TEMP]=curvalue;
+        PV_values[BMP1_PRESS]=curvalue;
+        PV_values[BMP2_TEMP]=curvalue;
+        PV_values[BMP2_PRESS]=curvalue;
+        PV_values[TSL_LUMIN]=curvalue;
+        PV_values[TSL_BB]=curvalue;
+        PV_values[TSL_IR]=curvalue;
+        PV_values[BMP1_HUMIDITY]=curvalue;
+        PV_values[BMP2_HUMIDITY]=curvalue;
+        for (int i=0;i<MAXDS;i++) { 
+              PV_values[DS18_0+i] = curvalue;
+        }
+
+//
+// Set up MQTT client
+//
+#ifdef USE_MQTT
+    printf(Serial,"MQTT Broker - %s:%d\n\r",MQTTbroker,MQTTport);
+    printf(Serial,"     Server Topics: \n\r");
+    for (int i=0;i<NUM_SERVER_STATS;i++) {
+         printf(Serial,"         %s%s\n\r",MQTTtopicPrefix,MQTTtopicServerStats[i]);
+    }
+    printf(Serial,"     PV Topics: \n\r");
+    for (int i=0;i<NUM_PVS;i++) {
+         printf(Serial,"         %s%s\n\r",MQTTtopicPrefix,MQTTtopicPV[i]);
+    }
+    if (!mqttClient.connect(MQTTbroker,MQTTport)) {
+      MQTTState = 0;
+      printf(Serial,"MQTT connection failed %s:%d - Error: ",MQTTbroker, MQTTport);
+      Serial.println(mqttClient.connectError());
+//    Errors : -2 = connection refused
+    } else {
+      MQTTState = 1;
+      printf(Serial,"MQTT connected at %s:%d\n\r",MQTTbroker, MQTTport);
+    }  
+#endif
+
+   ServerStats[STAT_SRVR_MAJOR] = SRVR_MAJOR;
+   ServerStats[STAT_SRVR_MINOR] = SRVR_MINOR;
+  
+
 printf(Serial,"-- Init complete --\n\r");
 }
 //
 //===========================================================================
+//
+unsigned int LastScanMilli;
+unsigned int DeltaScanMilli;
+unsigned int CurScanMilli;
+
+void UpdateSrvrVariablesEveryScan()
+{
+//
+//    Calculate MS since last processing
+//    Read millisecond counter
+//    Calculate change since last scan
+//    Update server register with Delta
+//    Store current millie reading for next iteration delta calc
+//  
+  float CurMotion;
+  
+  CurScanMilli = millis();
+  DeltaScanMilli = CurScanMilli-LastScanMilli;
+  ServerStats[STAT_SCAN_MS] = DeltaScanMilli;
+  LastScanMilli = CurScanMilli; 
+
+  int rssi = WiFi.RSSI();
+  ServerStats[STAT_WIFI_RSSI] = float(rssi);
+//
+  CurMotion = digitalRead(MOTION_PIN);
+  // Store instant Discrete in value
+  //Delay off for TimeDelayOff MS
+  ServerStats[STAT_MOTION_PIN] = float(CurMotion);
+  if (CurMotion == 1) {
+    LastOn = millis();  
+    ServerStats[STAT_MOTION_PIND] = float(CurMotion);
+  } else {
+    if ((millis()-LastOn)>OFFDELAYMS) {
+     ServerStats[STAT_MOTION_PIND] = float(CurMotion);
+    }
+  }
+  if (CurMotion != LastMotion) { // change detected
+    if (CurMotion==1) {
+      MotionCount++;
+      ServerStats[STAT_MOTION_CNT] = float(MotionCount);
+    }
+    LastMotion = CurMotion;
+  }
+  
+}
+//
+//===========================================================================
+//
+void UpdatePVsEveryScan()
+{
+  float curvalue;
+  char fstr[11];  
+
+  
+#ifdef USE_BMP280_1      
+   if (BMP1State==true){
+        curvalue=bmp1.readTemperature();
+        PV_values[BMP1_TEMP]=curvalue;
+
+        curvalue=bmp1.readPressure() / 100.0F;
+        PV_values[BMP1_PRESS]=curvalue;
+   } else {
+        curvalue=-9999.0;
+        PV_values[BMP1_TEMP]=curvalue;
+        PV_values[BMP1_PRESS]=curvalue;
+   }
+#endif
+#ifdef USE_BMP280_2
+   if (BMP2State==true){
+        curvalue=bmp2.readTemperature();
+        PV_values[BMP2_TEMP]=curvalue;
+
+        curvalue=bmp2.readPressure() / 100.0F;
+        PV_values[BMP2_PRESS]=curvalue;
+   } else {
+        curvalue=-9999.0;
+        PV_values[BMP2_TEMP]=curvalue;
+        PV_values[BMP2_PRESS]=curvalue;
+   }
+#endif      
+#ifdef USE_TSL2561
+    if (TSLState==true) {
+         if (tsl.ReadLightNoBlock()) { // try until it completes
+           curvalue = tsl.LightReading();
+           PV_values[TSL_LUMIN]=curvalue;
+
+           curvalue = tsl.BroadbandReading();
+           PV_values[TSL_BB]=curvalue;
+
+           curvalue = tsl.irReading();
+           PV_values[TSL_IR]=curvalue;
+         }
+    } else {
+        curvalue=-9999.0;
+        PV_values[TSL_LUMIN]=curvalue;
+        PV_values[TSL_BB]=curvalue;
+        PV_values[TSL_IR]=curvalue;
+    }
+#endif
+  
+}
+//
+//===========================================================================
+//
+void UpdatePVsSomeScans()
+{
+  float curvalue;
+  char fstr[11];  
+  
+// -----  Update register entries for HTU21 #1                
+#ifdef USE_HTU21_1    
+  if (HTU1State==true) {
+        curvalue=htu1.readTemperature();
+        if (curvalue==NAN) { delay(5); curvalue=htu1.readTemperature();} //try twice
+        PV_values[HTU1_TEMP]=curvalue;
+
+        curvalue=htu1.readHumidity();
+        if (curvalue==NAN) { delay(5); curvalue=htu1.readHumidity();} //try twice
+        PV_values[HTU1_HUMIDITY]=curvalue;
+  } else {
+        curvalue=-9999.0;
+        PV_values[HTU1_TEMP]=curvalue;
+        PV_values[HTU1_HUMIDITY]=curvalue;
+  }
+#endif      
+
+#ifdef USE_HTU21_2    
+  if (HTU2State==true) {
+        curvalue=htu2.readTemperature();
+        if (curvalue==NAN) { delay(5); curvalue=htu2.readTemperature();} //try twice
+        PV_values[HTU2_TEMP]=curvalue;
+
+        curvalue=htu2.readHumidity();
+        if (curvalue==NAN) { delay(5); curvalue=htu2.readHumidity();} //try twice
+        PV_values[HTU2_HUMIDITY]=curvalue;
+  } else {
+        curvalue=-9999.0;
+        PV_values[HTU2_TEMP]=curvalue;
+        PV_values[HTU2_HUMIDITY]=curvalue;
+   }
+#endif      
+
+#ifdef USE_DS18B20
+    if ((ds.getNumberOfDevices()>0)) {
+      delta = millis() - DS18UpdateLastRun;
+      if (( delta > UPDATERATEDS18 ) ) {  // Run one read per scan
+        DS18UpdateLastRun = millis();
+//        uint32_t rdelta;
+//        rdelta = millis();
+//        printf(Serial,"DS18 Reading ");
+           ds.select(DS18AddressList[currentDS18]);
+           curvalue=ds.getTempC();
+           PV_values[DS18_0+currentDS18] = curvalue;
+           currentDS18++;
+           if ((currentDS18>=ds.getNumberOfDevices())||(currentDS18>=MAXDS)) currentDS18 = 0;
+      }
+    } else {
+           curvalue=-9999.0;
+           for (int i=0;i<MAXDS;i++) { 
+              PV_values[DS18_0+i] = curvalue;
+            }
+    }
+#endif
+  
+}
+//
+//==============================================================================================
 //
 // set up macro to place float in proper byte order for register storage
 // only uncomment 1 of the macros
@@ -689,10 +877,12 @@ printf(Serial,"-- Init complete --\n\r");
 //#define USE_SET_FLOAT_ORDER modbus_set_float_badc
 //#define USE_SET_FLOAT_ORDER modbus_set_float_cdab
 //#define USE_SET_FLOAT_ORDER modbus_set_float
+//
 //===========================================================================
 //
 // Store floating value into selected register pair
 //
+#ifdef USE_MODBUS
 void UpdateModbusFloatRegister(uint16_t BaseRegister, float val)
 {
     uint16_t intval[2];
@@ -706,11 +896,13 @@ void UpdateModbusFloatRegister(uint16_t BaseRegister, float val)
 //        (intval[0]>>8)& 0xFF,(intval[0])& 0xFF,
 //        (intval[1]>>8)& 0xFF,(intval[1])& 0xFF);   
 }
+#endif
 //
 //============================================================================
 //
 // Store integer value into selected register
 //
+#ifdef USE_MODBUS
 void UpdateModbusInt16Register(uint8_t BaseRegister, float val)
 {
     union {
@@ -732,7 +924,7 @@ void UpdateModbusInt16Register(uint8_t BaseRegister, float val)
 //        printf(Serial,"UpdateModbusInt16Register: addr: %d (R%d) val - %s  int - %d  uint - %d\n\r",BaseRegister+1,BaseRegister,fstr,x.ival, x.uival);
 //  printf(Serial,".");
 }  
-
+#endif
 //
 //===========================================================================
 //
@@ -741,158 +933,55 @@ void UpdateModbusInt16Register(uint8_t BaseRegister, float val)
 // Reads each device configured/available, and stores result into associated
 // modbus register (floating and integer)
 //
-
+#ifdef USE_MODBUS
 void UpdateModbusRegistersEveryScan()
 {
-  float curvalue;
-  char fstr[11];  
-  float CurMotion;
-  
-  int rssi = WiFi.RSSI();
-//  printf(Serial," rssi:%ld   base:%d\n\r",rssi,WIFI_RSSI_BASE);
-  modbusTCPServer.inputRegisterWrite(WIFI_RSSI_BASE, rssi);      
-//
-  CurMotion = digitalRead(MOTION_PIN);
-  // Store instant Discrete in value
-  //Delay off for TimeDelayOff MS
-  modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASE,CurMotion);      
-  if (CurMotion == 1) {
-    LastOn = millis();  
-    modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASED,CurMotion);      
-  } else {
-    if ((millis()-LastOn)>OFFDELAYMS) {
-     modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASED,CurMotion);        
-    }
-  }
-  if (CurMotion != LastMotion) { // change detected
-    if (CurMotion==1) {
-      MotionCount++;
-      modbusTCPServer.inputRegisterWrite(MOTION_CNT_BASE,MotionCount);      
-    }
-    LastMotion = CurMotion;
-  }
-// -----  Update register entries for HTU21 #1                
-#ifdef USE_HTU21_1    
-  if (HTU1State==true) {
-        curvalue=htu1.readTemperature();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"HTU1 temp: %s\n\r",fstr);
-        UpdateModbusFloatRegister(HTU1_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(HTU1_I16_TEMP_BASE,curvalue);
+  modbusTCPServer.inputRegisterWrite(SCAN_MS_BASE, ServerStats[STAT_SCAN_MS]); 
+  modbusTCPServer.inputRegisterWrite(WIFI_RSSI_BASE, ServerStats[STAT_WIFI_RSSI]);      
 
-        curvalue=htu1.readHumidity();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"HTU1 humid: %s\n\r",fstr);
-        UpdateModbusFloatRegister(HTU1_FP_HUMID_BASE,curvalue);
-        UpdateModbusInt16Register(HTU1_I16_HUMID_BASE,curvalue);
-  } else {
-        curvalue=-9999.0;
-        UpdateModbusFloatRegister(HTU1_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(HTU1_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(HTU1_FP_HUMID_BASE,curvalue);
-        UpdateModbusInt16Register(HTU1_I16_HUMID_BASE,curvalue);
-  }
-#endif      
+  modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASE,ServerStats[STAT_MOTION_PIN]);      
+  modbusTCPServer.inputRegisterWrite(MOTION_PIN_BASED,ServerStats[STAT_MOTION_PIND]);      
+  modbusTCPServer.inputRegisterWrite(MOTION_CNT_BASE,ServerStats[STAT_MOTION_CNT]);      
 
-#ifdef USE_HTU21_2    
-  if (HTU2State==true) {
-        curvalue=htu2.readTemperature();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"HTU2 temp: %s\n\r",fstr);
-        UpdateModbusFloatRegister(HTU2_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(HTU2_I16_TEMP_BASE,curvalue);
+  UpdateModbusFloatRegister(HTU1_FP_TEMP_BASE,PV_values[HTU1_TEMP]);
+  UpdateModbusInt16Register(HTU1_I16_TEMP_BASE,PV_values[HTU1_TEMP]);
 
-        curvalue=htu2.readHumidity();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"HTU2 humid: %s\n\r",fstr);
-        UpdateModbusFloatRegister(HTU2_FP_HUMID_BASE,curvalue);
-        UpdateModbusInt16Register(HTU2_I16_HUMID_BASE,curvalue);
-  } else {
-        curvalue=-9999.0;
-        UpdateModbusFloatRegister(HTU2_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(HTU2_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(HTU2_FP_HUMID_BASE,curvalue);
-        UpdateModbusInt16Register(HTU2_I16_HUMID_BASE,curvalue);
-   }
-#endif      
-#ifdef USE_BMP280_1      
-   if (BMP1State==true){
-        curvalue=bmp1.readTemperature();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"BMP1 temp: %s\n\r",fstr);
-        UpdateModbusFloatRegister(BMP1_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(BMP1_I16_TEMP_BASE,curvalue);
+  UpdateModbusFloatRegister(HTU1_FP_HUMID_BASE,PV_values[HTU1_HUMIDITY]);
+  UpdateModbusInt16Register(HTU1_I16_HUMID_BASE,PV_values[HTU1_HUMIDITY]);
 
-        curvalue=bmp1.readPressure() / 100.0F;
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"BMP1 press: %s\n\r",fstr);
-        UpdateModbusFloatRegister(BMP1_FP_PRESS_BASE,curvalue);
-        UpdateModbusInt16Register(BMP1_I16_PRESS_BASE,curvalue);
-   } else {
-        curvalue=-9999.0;
-        UpdateModbusFloatRegister(BMP1_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(BMP1_I16_TEMP_BASE,curvalue);
-        UpdateModbusFloatRegister(BMP1_FP_PRESS_BASE,curvalue);
-        UpdateModbusInt16Register(BMP1_I16_PRESS_BASE,curvalue);
-   }
-#endif
-#ifdef USE_BMP280_2
-   if (BMP2State==true){
-        curvalue=bmp2.readTemperature();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"BMP2 temp: %s\n\r",fstr);
-        UpdateModbusFloatRegister(BMP2_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(BMP2_I16_TEMP_BASE,curvalue);
+  UpdateModbusFloatRegister(HTU2_FP_TEMP_BASE,PV_values[HTU2_TEMP]);
+  UpdateModbusInt16Register(HTU2_I16_TEMP_BASE,PV_values[HTU2_TEMP]);
 
-        curvalue=bmp2.readPressure() / 100.0F;
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"BMP2 press: %s\n\r",fstr);
-        UpdateModbusFloatRegister(BMP2_FP_PRESS_BASE,curvalue);
-        UpdateModbusInt16Register(BMP2_I16_PRESS_BASE,curvalue);
-   } else {
-        curvalue=-9999.0;
-        UpdateModbusFloatRegister(BMP2_FP_TEMP_BASE,curvalue);
-        UpdateModbusInt16Register(BMP2_I16_TEMP_BASE,curvalue);
+  UpdateModbusFloatRegister(HTU2_FP_HUMID_BASE,PV_values[HTU2_HUMIDITY]);
+  UpdateModbusInt16Register(HTU2_I16_HUMID_BASE,PV_values[HTU2_HUMIDITY]);
 
-        UpdateModbusFloatRegister(BMP2_FP_PRESS_BASE,curvalue);
-        UpdateModbusInt16Register(BMP2_I16_PRESS_BASE,curvalue);
-   }
-#endif      
-#ifdef USE_TSL2561
-    if (TSLState==true) {
-         if (tsl.ReadLightNoBlock()) { // try until it completes
-//           char fstr[11];
-//           printf(Serial,"TSL read\n\r");
-           curvalue = tsl.LightReading();
-//           dtostrf(curvalue,8,2,fstr);
-//           printf(Serial,"Lumen:%s ",fstr);
-           UpdateModbusFloatRegister(TSL_FP_LUMEN_BASE,curvalue);
-           UpdateModbusInt16Register(TSL_I16_LUMEN_BASE,curvalue);
-           curvalue = tsl.BroadbandReading();
-//           printf(Serial," BB:%ul ",tsl.BroadbandReading());
-           UpdateModbusFloatRegister(TSL_FP_BB_BASE,curvalue);
-           UpdateModbusInt16Register(TSL_I16_BB_BASE,curvalue);
-           curvalue = tsl.irReading();
-//           printf(Serial," IR:%ul ",tsl.irReading());
-           UpdateModbusFloatRegister(TSL_FP_IR_BASE,curvalue);
-           UpdateModbusInt16Register(TSL_I16_IR_BASE,curvalue);
-//           printf(Serial,"\n\r");
-         }
-    } else {
-        curvalue=-9999.0;
-        UpdateModbusFloatRegister(TSL_FP_LUMEN_BASE,curvalue);
-        UpdateModbusInt16Register(TSL_I16_LUMEN_BASE,curvalue);
-        UpdateModbusFloatRegister(TSL_FP_BB_BASE,curvalue);
-        UpdateModbusInt16Register(TSL_I16_BB_BASE,curvalue);
-        UpdateModbusFloatRegister(TSL_FP_IR_BASE,curvalue);
-        UpdateModbusInt16Register(TSL_I16_IR_BASE,curvalue);
-    }
-#endif
+  UpdateModbusFloatRegister(BMP1_FP_TEMP_BASE,PV_values[BMP1_TEMP]);
+  UpdateModbusInt16Register(BMP1_I16_TEMP_BASE,PV_values[BMP1_TEMP]);
+
+  UpdateModbusFloatRegister(BMP1_FP_PRESS_BASE,PV_values[BMP1_PRESS]);
+  UpdateModbusInt16Register(BMP1_I16_PRESS_BASE,PV_values[BMP1_PRESS]);
+
+   UpdateModbusFloatRegister(BMP2_FP_TEMP_BASE,PV_values[BMP2_TEMP]);
+   UpdateModbusInt16Register(BMP2_I16_TEMP_BASE,PV_values[BMP2_TEMP]);
+
+   UpdateModbusFloatRegister(BMP2_FP_PRESS_BASE,PV_values[BMP2_PRESS]);
+   UpdateModbusInt16Register(BMP2_I16_PRESS_BASE,PV_values[BMP2_PRESS]);
+
+   UpdateModbusFloatRegister(TSL_FP_LUMEN_BASE,PV_values[TSL_LUMIN]);
+   UpdateModbusInt16Register(TSL_I16_LUMEN_BASE,PV_values[TSL_LUMIN]);
+
+   UpdateModbusFloatRegister(TSL_FP_BB_BASE,PV_values[TSL_BB]);
+   UpdateModbusInt16Register(TSL_I16_BB_BASE,PV_values[TSL_BB]);
+
+   UpdateModbusFloatRegister(TSL_FP_IR_BASE,PV_values[TSL_IR]);
+   UpdateModbusInt16Register(TSL_I16_IR_BASE,PV_values[TSL_IR]);
 
 }
+#endif
 //
 //===========================================================================
 //
+#ifdef USE_MODBUS
 void UpdateModbusCoilsEveryScan()
 {
   float curvalue;
@@ -991,6 +1080,7 @@ void UpdateModbusCoilsEveryScan()
 // 01-23-2021 end add DO functionality
 
 }
+#endif
 //
 //===========================================================================
 //
@@ -999,41 +1089,15 @@ void UpdateModbusCoilsEveryScan()
 // Reads each device configured/available, and stores result into associated
 // modbus register (floating and integer)
 //
-
-void UpdateModbusRegisters()
+#ifdef USE_MODBUS
+void UpdateModbusRegistersDS()
 {
-  float curvalue;
-  char fstr[11];  
-  
-//printf(Serial,"UpdateModbusRegisters entered...\n\r");
-#ifdef USE_DS18B20
-    if ((ds.getNumberOfDevices()>0)) {
-      delta = millis() - DS18UpdateLastRun;
-      if (( delta > UPDATERATEDS18 ) ) {  // Run one read per scan
-        DS18UpdateLastRun = millis();
-//        uint32_t rdelta;
-//        rdelta = millis();
-//        printf(Serial,"DS18 Reading ");
-           ds.select(DS18AddressList[currentDS18]);
-           curvalue=ds.getTempC();
-//        dtostrf(curvalue,8,2,fstr);
-//        printf(Serial,"DS18(%d): %s    millis:%ld\n\r",currentDS18,fstr,millis()-rdelta);
-           UpdateModbusFloatRegister(DS18_FP_BASE+(currentDS18*2),curvalue);
-           UpdateModbusInt16Register(DS18_I16_BASE+currentDS18,curvalue);
-           currentDS18++;
-           if ((currentDS18>=ds.getNumberOfDevices())||(currentDS18>=MAXDS)) currentDS18 = 0;
-      }
-    } else {
-           curvalue=-9999.0;
-           for (int i=0;i<MAXDS;i++) { 
-              UpdateModbusFloatRegister(DS18_FP_BASE+(i*2),curvalue);
-              UpdateModbusInt16Register(DS18_I16_BASE+i,curvalue);
-            }
-    }
-#endif
-//printf(Serial,"UpdateModbusRegisters exited...\n\r");
-  
+  for (int i=0;i<MAXDS;i++) { 
+      UpdateModbusFloatRegister(DS18_FP_BASE+(i*2),PV_values[DS18_0+i]);
+      UpdateModbusInt16Register(DS18_I16_BASE+i,PV_values[DS18_0+i]);
+  }
 }
+#endif
 //
 //===========================================================================
 //
@@ -1050,91 +1114,148 @@ void PrintByte(unsigned char c)
 //
 //============================================================================
 //
+#ifdef USE_MQTT
+void UpdateMQTTtopics()
+{
+  char topic[400];
+  char fstr[11];  
+  
+// update topics for MQTT client
+
+  // server stat topics
+  for (int i=0;i<NUM_SERVER_STATS;i++){
+    sprintf(topic,"%s%s",MQTTtopicPrefix,MQTTtopicServerStats[i]);    
+#ifdef DEBUG
+    printf(Serial,"topic: %s = %d\n\r",topic,ServerStats[i]);
+#endif    
+    if (mqttClient.connected()) {
+        mqttClient.beginMessage(topic);
+        mqttClient.print(ServerStats[i]);
+        mqttClient.endMessage();
+     } else {
+        printf(Serial,"UpdateMQTTtopics: MQTT not connected at STAT:%d\n\r",i);
+        MQTTState = 0;
+        return;    
+     }
+  }
+  // device PV topics
+  for (int i=0;i<NUM_PVS;i++){
+    sprintf(topic,"%s%s",MQTTtopicPrefix,MQTTtopicPV[i]);    
+#ifdef DEBUG
+    dtostrf(PV_values[i],8,2,fstr);
+    printf(Serial,"topic: %s = %s\n\r",topic,fstr);
+#endif
+    if (mqttClient.connected()) {
+        mqttClient.beginMessage(topic);
+        mqttClient.print(PV_values[i]);
+        mqttClient.endMessage();
+     } else {
+        printf(Serial,"UpdateMQTTtopics: MQTT not connected at PV:%d\n\r",i);
+        MQTTState = 0;
+        return;    
+     }
+  } 
+}
+#endif
+//
+//=================================================================================
+//
+#ifdef USE_MODBUS
+
+  WiFiClient client;
+void update_modbus()
+{
+    // if not connected, listen for client
+  if(!client) {
+    client = wifiServer.available();
+    if (client) {
+      modbusTCPServer.inputRegisterWrite(SRVR_CLIENT_CNT_BASE, ++ClientCount); 
+      ServerStats[STAT_CLIENT_CNT] = ClientCount;
+      // let the Modbus TCP accept the connection 
+      modbusTCPServer.accept(client);
+      // new client
+      printf(Serial,"Connect from Client - %s:%d\n\r",client.remoteIP().toString().c_str(), client.remotePort());
+    }
+  }
+  
+  if (client) {
+//
+//  process function requests from client until disconnected
+//
+    if (client.connected()) {
+      UpdateModbusRegistersDS();
+      UpdateModbusRegistersEveryScan();
+      UpdateModbusCoilsEveryScan();
+    }
+  }
+  // poll for Modbus TCP requests, while client connected
+  modbusTCPServer.poll();
+}
+#endif
+//
+//===========================================================================
+//
+#ifdef USE_MQTT
+void update_MQTT()
+{
+//
+// update broker at set interval with topics
+//
+      delta = CurScanMilli - MQTTpreviousMillis;
+      if (delta >= MQTTinterval ) {
+        MQTTpreviousMillis = CurScanMilli;
+
+        if (MQTTState == 0) {
+          if (!mqttClient.connect(MQTTbroker,MQTTport)) { // try again to connect
+              MQTTState = 0;
+      printf(Serial,"MQTT connection failed %s:%d - Error: ",MQTTbroker, MQTTport);
+      Serial.println(mqttClient.connectError());
+           } else {
+              MQTTState = 1;
+              printf(Serial,"MQTT connected at %s:%d\n\r",MQTTbroker, MQTTport);
+           }  
+        }
+
+        if (MQTTState == 1) {
+          UpdateMQTTtopics();
+        }
+      }
+  mqttClient.poll();
+}
+#endif
+//
+//============================================================================
+//
 // main loop
 // Wait for client connection and process modbus commands
 // Note this code steps on registers each iteration,
 // no device updates to holding registers are retained.
 //
-unsigned int LastScanMilli;
-unsigned int DeltaScanMilli;
-unsigned int CurScanMilli;
 void loop() {
- //
- // update scan time
-   CurScanMilli = millis();
-   DeltaScanMilli = CurScanMilli-LastScanMilli;
-   modbusTCPServer.inputRegisterWrite(SCAN_MS_BASE, DeltaScanMilli); 
-   LastScanMilli = CurScanMilli; 
-  
-  // test OTA
+
+// Allow OTA if requested
 #ifdef USE_OTA
   ArduinoOTA.handle();
 #endif  
-  // listen for client
-  WiFiClient client = wifiServer.available();
-  
-  if (client) {
-    modbusTCPServer.inputRegisterWrite(SRVR_CLIENT_CNT_BASE, ++ClientCount); 
-    // new client
-    printf(Serial,"Connect from Client - %s:%d\n\r",client.remoteIP().toString().c_str(), client.remotePort());
 
-    // let the Modbus TCP accept the connection 
-    modbusTCPServer.accept(client);
-    MainLoopLastRun = 0;
-    DS18UpdateLastRun = 0;
 //
-//  Set the register values for device status and counts
+// Read devices into value arrays
 //
-    modbusTCPServer.inputRegisterWrite(DEV_BMPCNT_BASE, BMPCount); 
-    modbusTCPServer.inputRegisterWrite(DEV_HTUCNT_BASE, HTUCount); 
-    modbusTCPServer.inputRegisterWrite(DEV_TSLCNT_BASE, TSLCount); 
-    modbusTCPServer.inputRegisterWrite(DEV_DS18CNT_BASE, DS18B20Count); 
+ UpdateSrvrVariablesEveryScan();
+ UpdatePVsEveryScan();
 
-    modbusTCPServer.inputRegisterWrite(SRVR_MAJOR_BASE, SRVR_MAJOR); 
-    modbusTCPServer.inputRegisterWrite(SRVR_MINOR_BASE, SRVR_MINOR); 
-//
-//  process function requests from client until disconnected
-//
-    while (client.connected()) {
- //
-  // test OTA
-#ifdef USE_OTA
-      ArduinoOTA.handle();
+ delta = CurScanMilli-MainLoopLastRun;
+ if (delta >= UPDATERATEMS) {
+   MainLoopLastRun = CurScanMilli; 
+   UpdatePVsSomeScans();
+ }
+
+#ifdef USE_MODBUS
+  update_modbus();
 #endif
-//
-//    Read millisecond counter
-//  
-      CurScanMilli = millis();
-//
-//    Calculate change since last scan
-//
-      DeltaScanMilli = CurScanMilli-LastScanMilli;
-//
-//    Update modbus register with Delta
-//      
-      modbusTCPServer.inputRegisterWrite(SCAN_MS_BASE, DeltaScanMilli); 
-//
-//    Store current millie reading for next iteration delta calc
-//    
-      LastScanMilli = CurScanMilli; 
-//
-//    Calculate MS since last processing
-//      
-      UpdateModbusRegistersEveryScan();
-// 01-23-2021 add DOs
-      UpdateModbusCoilsEveryScan();
-// 01-23-2021
-      delta = CurScanMilli-MainLoopLastRun;
-      if (delta >= UPDATERATEMS) {
-        MainLoopLastRun = CurScanMilli; 
-        UpdateModbusRegisters();
-      }
-//      printf(Serial,"Calling modbusTCPServer.poll\n\r");
-      // poll for Modbus TCP requests, while client connected
-      modbusTCPServer.poll();
-// removed, could not get to work on D1 mini
-//while (SSerial.available()) PrintByte(SSerial.read());
-    }
-    printf(Serial,"Client disconnected...\n\r");
-  }
+
+#ifdef USE_MQTT
+  update_MQTT();
+#endif
+
 }
